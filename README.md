@@ -59,9 +59,14 @@ C4Container
 
 ### Deployment
 
+Target state — the DynamoDB table is what the LocalStack apply creates; the API
+Gateway + Lambda + IAM compute plane ships in `infrastructure/measurement-ingest-api.tf`
+but is flag-gated behind `deploy_compute` (default false), so it is not applied by
+default (see §3).
+
 ```mermaid
 C4Deployment
-  title Deployment — Measurements Service
+  title Deployment — Measurements Service (target state; compute flag-gated — see deploy_compute)
 
   Deployment_Group(aws, "AWS", "Single region") {
     Deployment_Node(apigwNode, "API Gateway", "Managed edge") {
@@ -309,6 +314,7 @@ the chosen layout.
 | `services/measurements/src/entry/index.ts` | Lambda handler — method dispatch only; `createHandler` takes an injected repository for tests, the exported `handler` wires the real DocumentClient + `TABLE_NAME` (fails loudly at init if unset) |
 | `openapi.yaml` | Retrieval-side `Measurement` schema filled in from the read model (`oneOf` + discriminator) |
 | `infrastructure/measurement-storage.tf` | The required design artifact: table + GSI resource |
+| `infrastructure/measurement-ingest-api.tf` | Bonus compute plane: API Gateway HTTP API + Lambda + least-privilege IAM, flag-gated behind `deploy_compute` (default false) — `terraform validate`-only |
 
 The core is transport-unaware: nothing in `src/core/` knows about Lambda or API Gateway,
 so every domain rule is directly testable in-process. The entry is deliberately dumb — it
@@ -334,10 +340,15 @@ unexpected errors → 500 (details go to the logs, never into the response body)
 
 - **Authn/z** — the given perimeter has none (no auth in `openapi.yaml`) and none was
   added; see *Before production* for what belongs in front of it.
-- **Compute-side Terraform** (HTTP API + Lambda + IAM) — a stretch item in the plan,
-  still pending at the time of writing; the required storage Terraform is in place,
-  applied locally and smoke-tested, and per ASSIGNMENT.md the §1 diagrams fully answer
-  the architecture.
+- **A local apply of the compute plane** — the compute-side Terraform (HTTP API + Lambda +
+  least-privilege IAM, `infrastructure/measurement-ingest-api.tf`) *shipped*, but
+  flag-gated: `deploy_compute=false` by default so the required table-only LocalStack
+  apply is unaffected. It is a `terraform validate`-only bonus — Lambda/API-Gateway
+  emulation on LocalStack is out of scope — so flip the flag on in a real account or CI,
+  not against the local endpoint. It packages the built `dist/` as a zip produced by CI
+  and deliberately uses that pre-built-zip path rather than the `archive_file` data
+  source, to avoid mutating the committed provider lock file (a deviation the file
+  header self-documents).
 - **Backoff on the batch-write retry** — bounded re-sends of `UnprocessedItems` without
   exponential backoff (acknowledged in §2).
 - **A test for the throttling path itself** — the in-process harness never returns
@@ -401,9 +412,10 @@ the most from the following.
   independently testable, each replaceable without touching the others.
 - **The thin-transport entry / transport-unaware core split.** The same core runs behind a
   Lambda handler today and behind an HTTP server, queue consumer, or CLI tomorrow.
-- **The `table-definition.ts` ⇄ `.tf` mirroring convention.** Tests create the exact shape
-  Terraform deploys, so code/infra drift surfaces as a failing test instead of a
-  production surprise.
+- **The `table-definition.ts` ⇄ `.tf` mirroring convention.** Tests create the same shape
+  Terraform deploys. The two are kept in sync by cross-referencing comments in both files
+  plus the LocalStack post-apply `describe-table` smoke check — there is no automated
+  parity test (tests only ever see the TS definition), so change one, change the other.
 - **The in-process DynamoDB harness** (`test/helpers/dynamodb.ts`). Real key semantics in a
   plain `npm test` — no Docker, no AWS account, no credentials. The single biggest
   contributor to fast, trustworthy tests here.
@@ -422,16 +434,24 @@ the most from the following.
   validation and read schemas should be pluggable.
 - **Per-team-table vs. shared-table guidance.** This design shares one table across types
   safely (`type` is a first-class key component; `values` is a per-type map). A second team
-  can either join this table (cheapest, consistent reads, shared scaling budget) or clone
-  the pattern into their own (isolation, independent retention and scaling). That decision
-  should be deliberate; I'd default to a separate table whenever lifecycle or compliance
-  differs.
+  can either join this table — cheapest, with a shared scaling budget — or clone the
+  pattern into their own (isolation, independent retention and scaling). If they join,
+  note the type+time-window retrieval path reads through the `by-type-and-time` GSI, and
+  GSI reads are always **eventually consistent**: strongly-consistent reads are only
+  available on base-table queries (e.g. a single device's own history by `pk`). That
+  decision should be deliberate; I'd default to a separate table whenever lifecycle or
+  compliance differs.
 
 **What I would write down for them (the gotchas):**
 
 - **The model string is device identity.** Keys assume it is stable across submissions
   (`<model>#<serialNumber>`); a renamed or restyled model string fragments a device's
   history (§2). It is not free text — never "clean it up" without a migration plan.
+- **`#` is the key separator — `device.model` and `device.serialNumber` must not contain
+  it.** An embedded `#` could make two different devices' keys collide: exactly the
+  corruption the composite PK defends against (§2). Rejecting `#` in those fields is a
+  production validation/hardening item — the current validator trims but does not yet
+  reject it.
 - **The key contract lives in `normalize.ts`, in one place only.** Every key format (`pk`,
   `sk`, `typeTimeKey`) and the fixed UTC timestamp format are built there and mirrored by
   `measurement-storage.tf`. Change one, change the other, and re-run the boundary tests.
