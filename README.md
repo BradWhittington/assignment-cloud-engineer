@@ -66,7 +66,7 @@ default (see §3).
 
 ```mermaid
 C4Deployment
-  title Deployment — Measurements Service (target state; compute flag-gated — see deploy_compute)
+  title Deployment — Measurements Service (target state, compute flag-gated — see deploy_compute)
 
   Deployment_Group(aws, "AWS", "Single region") {
     Deployment_Node(apigwNode, "API Gateway", "Managed edge") {
