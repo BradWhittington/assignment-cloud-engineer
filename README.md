@@ -68,7 +68,7 @@ default (see §3).
 C4Deployment
   title Deployment — Measurements Service (target state, compute flag-gated — see deploy_compute)
 
-  Deployment_Group(aws, "AWS", "Single region") {
+  Deployment_Node(aws, "AWS — single region", "Amazon Web Services") {
     Deployment_Node(apigwNode, "API Gateway", "Managed edge") {
       Container(api, "HTTP API", "Amazon API Gateway", "POST /measurements and GET /measurements")
     }
