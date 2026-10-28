@@ -10,11 +10,17 @@
 #
 # Packaging: `filename` points at a pre-built zip rather than a
 # data "archive_file". The zip is a build artifact produced by CI (or
-# locally) with `cd services/measurements && npm run build && zip -r
-# dist-lambda.zip dist`; using it directly avoids pulling in the
-# hashicorp/archive provider just to repackage what the build already made.
-# It contains only the compiled dist/: the nodejs22.x runtime bundles AWS
-# SDK v3 and the service has no other runtime dependency.
+# locally) with `cd services/measurements && npm run build && printf
+# '{"type":"module"}' > dist/package.json && zip -r dist-lambda.zip
+# dist`; using it directly avoids pulling in the hashicorp/archive
+# provider just to repackage what the build already made. Besides the
+# compiled dist/, the zip MUST also carry a minimal package.json with
+# {"type":"module"} (the workspace's own package.json works too): the
+# workspace is "type": "module" and tsc emits ESM, so the marker makes
+# nodejs22.x resolve the .js files as ESM deterministically rather than
+# relying on syntax detection. Nothing else is needed — the nodejs22.x
+# runtime bundles AWS SDK v3 and the service has no other runtime
+# dependency.
 
 variable "deploy_compute" {
   type        = bool
