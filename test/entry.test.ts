@@ -7,7 +7,7 @@ import type {
   APIGatewayProxyResultV2,
   APIGatewayProxyStructuredResultV2
 } from 'aws-lambda';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { DynamoDbMeasurementRepository } from '../services/measurements/src/core/measurement-repository.js';
 import { measurementTableDefinition } from '../services/measurements/src/core/table-definition.js';
@@ -240,6 +240,10 @@ describe('entry handler', () => {
   });
 
   it('answers 500 without leaking internals when the repository fails', async () => {
+    // The handler logs the real cause server-side; capture it so the test
+    // output stays clean while the logging behavior stays covered.
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
     const failingHandler = createHandler({
       repository: {
         storeSubmission: async () => {
@@ -256,5 +260,8 @@ describe('entry handler', () => {
 
     expectJsonResponse(result, 500, { error: 'internal error' });
     expect((result as APIGatewayProxyStructuredResultV2).body).not.toContain('connection reset');
+    expect(errSpy).toHaveBeenCalled();
+
+    errSpy.mockRestore();
   });
 });
