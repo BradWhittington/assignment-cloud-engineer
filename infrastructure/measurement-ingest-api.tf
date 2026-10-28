@@ -66,9 +66,9 @@ resource "aws_iam_role_policy" "ingest_logs" {
   })
 }
 
-# Least privilege: only the writes (PutItem) and reads (Query) the repository
-# actually issues, scoped to the table and its GSI. Deriving both ARNs from
-# the table resource keeps this correct anywhere without
+# Least privilege: only the writes (BatchWriteItem) and reads (Query) the
+# repository actually issues, scoped to the table and its GSI. Deriving both
+# ARNs from the table resource keeps this correct anywhere without
 # data.aws_caller_identity — which this LocalStack-pointed provider cannot
 # serve (skip_requesting_account_id = true, only dynamodb has an endpoint).
 resource "aws_iam_role_policy" "ingest_dynamodb" {
@@ -82,7 +82,7 @@ resource "aws_iam_role_policy" "ingest_dynamodb" {
     Statement = [{
       Effect = "Allow"
       Action = [
-        "dynamodb:PutItem",
+        "dynamodb:BatchWriteItem",
         "dynamodb:Query"
       ]
       Resource = [
