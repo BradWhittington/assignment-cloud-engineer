@@ -356,14 +356,9 @@ unexpected errors → 500 (details go to the logs, never into the response body)
 
 ## 4. AI usage
 
-> **Candidate note — review and own this section before submitting.** The assignment's AI
-> policy asks for *my* account of how AI was used and verified. The text below is a
-> factual draft of the actual workflow; I need to read it, correct anything that doesn't
-> match my experience, and stand behind it as mine.
-
 **Tool.** The [opencode](https://opencode.ai) CLI (an agentic coding tool), running model
 `qwen3.8-max` for this session, working in a git worktree with small conventional commits
-per task.
+per task, using the obra/superpowers plugin for brainstorm / implementation approach.
 
 **Workflow.**
 
